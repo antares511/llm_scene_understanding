@@ -15,7 +15,6 @@ charset-normalizer==2.0.12
 cheroot==8.6.0
 CherryPy==18.6.1
 click==8.0.4
-clip==1.0
 ConceptNet==5.7.0
 ConfigArgParse==1.5.3
 connection-pool==0.0.3

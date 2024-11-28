@@ -16,7 +16,8 @@ from matplotlib import pyplot as plt
 from model_utils import get_category_index_map
 import torch.nn.functional as F
 import torch.nn as nn
-from torch_scatter import scatter
+
+# from torch_scatter import scatter
 from transformers import (
     BertTokenizer,
     BertForMaskedLM,
@@ -35,15 +36,18 @@ import pandas as pd
 import os
 import time
 
+from kumaraditya.utils import compute_metrics_by_class
+from torchmetrics.classification import MulticlassAveragePrecision
+
 
 #################################################################################
 def dynamic_lm_refinements(
-        lm,
-        use_cooccurencies=True,
-        batch_size=82,
-        k=5,
-        use_test=False,
-        label_set="nyuClass",  # "mpcat40",
+    lm,
+    use_cooccurencies=True,
+    batch_size=82,
+    k=5,
+    use_test=False,
+    label_set="nyuClass",  # "mpcat40",
 ):
 
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -52,7 +56,8 @@ def dynamic_lm_refinements(
         tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
         lm_model = BertForMaskedLM.from_pretrained("bert-base-uncased")
         object_norm_inv_perplexity = compute_object_norm_inv_ppl(
-            "./label_matrices/bert_base_mean_pll/room_object.npy")
+            "./label_matrices/bert_base_mean_pll/room_object.npy"
+        )
         start = "[CLS]"
         end = "[SEP]"
         mask_id = 103
@@ -61,7 +66,8 @@ def dynamic_lm_refinements(
         tokenizer = BertTokenizer.from_pretrained("bert-large-uncased")
         lm_model = BertForMaskedLM.from_pretrained("bert-large-uncased")
         object_norm_inv_perplexity = compute_object_norm_inv_ppl(
-            "./label_matrices/bert_large_mean_pll/room_object.npy")
+            "./label_matrices/bert_large_mean_pll/room_object.npy"
+        )
         start = "[CLS]"
         end = "[SEP]"
         mask_id = 103
@@ -70,33 +76,34 @@ def dynamic_lm_refinements(
         tokenizer = RobertaTokenizer.from_pretrained("roberta-base")
         lm_model = RobertaForMaskedLM.from_pretrained("roberta-base")
         object_norm_inv_perplexity = compute_object_norm_inv_ppl(
-            "./label_matrices/roberta_base_mean_pll/room_object.npy")
+            "./label_matrices/roberta_base_mean_pll/room_object.npy"
+        )
         start = "<s>"
         end = "</s>"
-        mask_id = tokenizer.convert_tokens_to_ids(
-            tokenizer.tokenize("<mask>"))[0]
+        mask_id = tokenizer.convert_tokens_to_ids(tokenizer.tokenize("<mask>"))[0]
     elif lm == "RoBERTa-large":
         tokenizer = RobertaTokenizer.from_pretrained("roberta-large")
         lm_model = RobertaForMaskedLM.from_pretrained("roberta-large")
         object_norm_inv_perplexity = compute_object_norm_inv_ppl(
-            "./cooccurrency_matrices/" + label_set +
-            "_roberta_large/room_object.npy")
+            "./cooccurrency_matrices/" + label_set + "_roberta_large/room_object.npy"
+        )
         start = "<s>"
         end = "</s>"
-        mask_id = tokenizer.convert_tokens_to_ids(
-            tokenizer.tokenize("<mask>"))[0]
+        mask_id = tokenizer.convert_tokens_to_ids(tokenizer.tokenize("<mask>"))[0]
     elif lm == "GPT2-large":
         raise NotImplemented
         lm_model = GPT2LMHeadModel.from_pretrained("gpt2-large")
         tokenizer = GPT2Tokenizer.from_pretrained("gpt2-large")
         object_norm_inv_perplexity = compute_object_norm_inv_ppl(
-            "./label_matrices/gpt2_large_negcrossent/room_object.npy")
+            "./label_matrices/gpt2_large_negcrossent/room_object.npy"
+        )
     elif lm == "GPT-Neo":
         raise NotImplemented
         lm_model = GPTNeoForCausalLM.from_pretrained("EleutherAI/gpt-neo-1.3B")
         tokenizer = GPT2Tokenizer.from_pretrained("EleutherAI/gpt-neo-1.3B")
         object_norm_inv_perplexity = compute_object_norm_inv_ppl(
-            "./label_matrices/gptneo_negcrossent/room_object.npy")
+            "./label_matrices/gptneo_negcrossent/room_object.npy"
+        )
     elif lm == "GPT-J":
         tokenizer = AutoTokenizer.from_pretrained("EleutherAI/gpt-j-6B")
         lm_model = GPTJForCausalLM.from_pretrained(
@@ -105,15 +112,16 @@ def dynamic_lm_refinements(
             torch_dtype=torch.float16,  # low_cpu_mem_usage=True
         )
         object_norm_inv_perplexity = compute_object_norm_inv_ppl(
-            "./cooccurrency_matrices/" + label_set + "_gpt_j/room_object.npy")
+            "./cooccurrency_matrices/" + label_set + "_gpt_j/room_object.npy"
+        )
     else:
         print("Model option " + lm + " not implemented yet")
         raise NotImplemented
 
     if use_cooccurencies:
         object_norm_inv_perplexity = compute_object_norm_inv_ppl(
-            "./cooccurrency_matrices/" + label_set + "_gt/room_object.npy",
-            True)
+            "./cooccurrency_matrices/" + label_set + "_gt/room_object.npy", True
+        )
 
     object_norm_inv_perplexity = object_norm_inv_perplexity.to(device)
 
@@ -122,9 +130,9 @@ def dynamic_lm_refinements(
 
     #################################################################################
     def negcrossentropy(text):
-        tokens_tensor = tokenizer.encode(text,
-                                         add_special_tokens=False,
-                                         return_tensors="pt").to(device)
+        tokens_tensor = tokenizer.encode(
+            text, add_special_tokens=False, return_tensors="pt"
+        ).to(device)
         with torch.no_grad():
             output = lm_model(tokens_tensor, labels=tokens_tensor)
             loss = output[0]
@@ -137,16 +145,14 @@ def dynamic_lm_refinements(
         tokenized_text = tokenizer.tokenize(text)
         indexed_tokens = tokenizer.convert_tokens_to_ids(tokenized_text)
         tokens_tensor = torch.tensor([indexed_tokens]).reshape(-1)
-        masked_tokens_tensor = tokens_tensor.repeat(tokens_tensor.shape[0] - 3,
-                                                    1)
+        masked_tokens_tensor = tokens_tensor.repeat(tokens_tensor.shape[0] - 3, 1)
 
         # Mask out one token per row
         ind1 = np.arange(masked_tokens_tensor.shape[0])
         ind2 = np.arange(1, masked_tokens_tensor.shape[0] + 1)
         masked_tokens_tensor[ind1, ind2] = mask_id
 
-        masked_tokens_tensor = masked_tokens_tensor.to(
-            device)  # if you have gpu
+        masked_tokens_tensor = masked_tokens_tensor.to(device)  # if you have gpu
 
         # Predict all tokens
         with torch.no_grad():
@@ -156,7 +162,8 @@ def dynamic_lm_refinements(
                 predictions = outputs[0]  # .to("cpu")
                 mask_scores = predictions[0, i + 1]
                 total += mask_scores[tokens_tensor[i + 1]] - torch.logsumexp(
-                    mask_scores, dim=0)
+                    mask_scores, dim=0
+                )
 
         Z = len(masked_tokens_tensor) if mean else 1
 
@@ -168,7 +175,7 @@ def dynamic_lm_refinements(
         scoring_fxn = pll
 
     dataset = Matterport3dDataset(
-        "./mp_data/" + label_set + "_matterport3d_w_edge.pkl"
+        "./mp_data/" + label_set + "_matterport3d_w_edge_502030_new.pkl"
     )  # TODO: Change back out of _502030 if needed
 
     labels, pl_labels = create_label_lists(dataset)
@@ -284,8 +291,7 @@ def dynamic_lm_refinements(
             batch.y[batch.room_mask],
             batch.y[batch.object_mask],
         )
-        y_object = F.one_hot(label[-1],
-                             len(object_list)).type(torch.LongTensor)
+        y_object = F.one_hot(label[-1], len(object_list)).type(torch.LongTensor)
 
         # Each of these tensors is size [2, # edges of given type]. Name describes two nodes in each edge,
         # e.g. room_building means one is a room and other is building
@@ -308,34 +314,48 @@ def dynamic_lm_refinements(
         ref_correct = 0
         total = 0
 
+        gt_rooms_list = []
+        inferred_rooms_list = []
+
+        metric = MulticlassAveragePrecision(
+            num_classes=len(room_list), average="weighted", thresholds=None
+        )
+
         for i in tqdm(range(len(label[1]))):  # range(len(label[1])):
             # print(room_list[label[1][i]])
             mask = category_index_map[object_room_edge_index[1]] == i
-            neighbor_dists = y_object[category_index_map[
-                object_room_edge_index[0][mask]]]
+            neighbor_dists = y_object[
+                category_index_map[object_room_edge_index[0][mask]]
+            ]
             neighbor_dists = neighbor_dists.to(device)
             if len(neighbor_dists) == 0:
                 continue
 
             start_time = time.time()
 
-            scores = neighbor_dists * object_norm_inv_perplexity.reshape(
-                [1, -1])
+            scores = neighbor_dists * object_norm_inv_perplexity.reshape([1, -1])
 
             maxes = torch.max(scores, dim=1).values
-            top_max_inds = torch.topk(maxes, max(min((maxes > 0).sum(), k),
-                                                 1)).indices
+            top_max_inds = torch.topk(maxes, max(min((maxes > 0).sum(), k), 1)).indices
             objs = torch.argmax(scores[top_max_inds], dim=1)
-            objs = torch.where(
-                torch.bincount(objs, minlength=len(object_list)) > 0)[0]
+            objs = torch.where(torch.bincount(objs, minlength=len(object_list)) > 0)[0]
 
-            ref_dist = F.softmax(construct_dist(objs, scoring_fxn),
-                                 dim=0).to(device)
+            ref_dist = F.softmax(construct_dist(objs, scoring_fxn), dim=0).to(device)
             new_dist = ref_dist
 
             ref = torch.argmax(new_dist)
             # print(time.time() - start_time)
             actual = label[1][i]
+
+            new_dist = new_dist.unsqueeze(0)
+            unsqueezed_ground_truth_room = actual.unsqueeze(0)
+            metric.update(
+                new_dist.cpu(),
+                unsqueezed_ground_truth_room.cpu(),
+            )
+
+            gt_rooms_list.append(actual.cpu().item())
+            inferred_rooms_list.append(ref.cpu().item())
 
             if ref == actual:
                 ref_correct += 1
@@ -349,43 +369,79 @@ def dynamic_lm_refinements(
             df = pd.concat([df, df2], ignore_index=True)
         print("Accuracy:", ref_correct / total)
 
+        save_folder = os.path.join(
+            "/scratch/kumaraditya_gupta/roomlabel/lc_baselines/", "zero_shot"
+        )
+        if not os.path.exists(save_folder):
+            os.makedirs(save_folder)
+
+        print("MAP:", metric.compute())
+        # compute_metrics_by_class(
+        #     np.array(gt_rooms_list),
+        #     np.array(inferred_rooms_list),
+        #     room_list,
+        #     label_set,
+        #     save_folder,
+        # )
+
         return (ref_correct / total, df)
 
 
 if __name__ == "__main__":
 
-    lms = ["GPT-J"]  #["RoBERTa-large"]
+    lm = "GPT-J"  # ["RoBERTa-large"]
 
-    df = pd.DataFrame(columns=["lm", "cooccurrencies", "accuracy"])
+    # df = pd.DataFrame(columns=["lm", "cooccurrencies", "accuracy"])
 
-    for use_test in [False, True]:
-        for label_set in ["nyuClass", "mpcat40"]:
-            for co in [True, False]:
-                for lm in lms:
-                    print("label set:", label_set, "lm:", lm,
-                          "use cooccurrencies:", co, "use test:", use_test)
-                    acc, analysis_df = dynamic_lm_refinements(
-                        lm,
-                        use_cooccurencies=co,
-                        batch_size=82,
-                        k=3,
-                        use_test=use_test,
-                        label_set=label_set,
-                    )
-                    df2 = {
-                        "lm": lm,
-                        "cooccurrencies": co,
-                        "accuracy": acc,
-                    }
-                    print(df2)
-                    """ df = df.append(df2, ignore_index=True)
+    use_test = True
+    # label_set = "mpcat40"  # "nyuClass"
+    co = True
 
-                    df.to_csv("./results/" + label_set +
-                              "_results_TestFewShot.csv")
-                    analysis_df.to_csv(
-                        os.path.join(
-                            "./analysis_logs",
-                            lm + "_co_" + str(co) + "_labelset_" + label_set +
-                            "_usetestset_" + str(use_test) +
-                            "_TestFewShot.csv",
-                        )) """
+    for label_set in ["nyuClass", "mpcat40"]:
+        print(
+            "label set:",
+            label_set,
+            "lm:",
+            lm,
+            "use cooccurrencies:",
+            co,
+            "use test:",
+            use_test,
+        )
+        acc, analysis_df = dynamic_lm_refinements(
+            lm,
+            use_cooccurencies=co,
+            batch_size=82,
+            k=3,
+            use_test=use_test,
+            label_set=label_set,
+        )
+
+    # for use_test in [False, True]:
+    #     for label_set in ["nyuClass", "mpcat40"]:
+    #         for co in [True, False]:
+    #             for lm in lms:
+    #                 print(
+    #                     "label set:",
+    #                     label_set,
+    #                     "lm:",
+    #                     lm,
+    #                     "use cooccurrencies:",
+    #                     co,
+    #                     "use test:",
+    #                     use_test,
+    #                 )
+    #                 acc, analysis_df = dynamic_lm_refinements(
+    #                     lm,
+    #                     use_cooccurencies=co,
+    #                     batch_size=82,
+    #                     k=3,
+    #                     use_test=use_test,
+    #                     label_set=label_set,
+    #                 )
+    #                 df2 = {
+    #                     "lm": lm,
+    #                     "cooccurrencies": co,
+    #                     "accuracy": acc,
+    #                 }
+    #                 print(df2)

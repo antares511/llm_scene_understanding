@@ -40,10 +40,13 @@ class DataGenerator:
         self.verbose = verbose
         self.device = (
             torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-            if device is None else device)
+            if device is None
+            else device
+        )
 
-        self.dataset = Matterport3dDataset("./mp_data/" + label_set +
-                                           "_matterport3d_w_edge_502030.pkl")
+        self.dataset = Matterport3dDataset(
+            "./mp_data/" + label_set + "_matterport3d_w_edge_502030_new.pkl"
+        )
         labels, pl_labels = create_label_lists(self.dataset)
         self.building_list, self.room_list, self.object_list = labels
         self.building_list_pl, self.room_list_pl, self.object_list_pl = pl_labels
@@ -56,11 +59,13 @@ class DataGenerator:
         # create data loader
         # self.dataloader = DataLoader(dataset, batch_size=82)
         if use_gt_cooccurrencies:
-            path_to_cooccurrencies = ("./cooccurrency_matrices/" + label_set +
-                                      "_gt" + "/room_object.npy")
+            path_to_cooccurrencies = (
+                "./cooccurrency_matrices/" + label_set + "_gt" + "/room_object.npy"
+            )
         else:
-            path_to_cooccurrencies = ("./cooccurrency_matrices/" + label_set +
-                                      "_gpt_j" + "/room_object.npy")
+            path_to_cooccurrencies = (
+                "./cooccurrency_matrices/" + label_set + "_gpt_j" + "/room_object.npy"
+            )
 
         self.object_norm_inv_perplexity = compute_object_norm_inv_ppl(
             path_to_cooccurrencies,
@@ -127,8 +132,7 @@ class DataGenerator:
             tokenizer = GPT2Tokenizer.from_pretrained("gpt2-large")
         elif lm == "GPT-Neo":
             lm_model = GPTNeoModel.from_pretrained("EleutherAI/gpt-neo-1.3B")
-            tokenizer = GPT2Tokenizer.from_pretrained(
-                "EleutherAI/gpt-neo-1.3B")
+            tokenizer = GPT2Tokenizer.from_pretrained("EleutherAI/gpt-neo-1.3B")
         elif lm == "GPT-J":
             tokenizer = AutoTokenizer.from_pretrained("EleutherAI/gpt-j-6B")
             lm_model = GPTJModel.from_pretrained(
@@ -151,9 +155,7 @@ class DataGenerator:
         # self.tokenizer = self.tokenizer.to(self.device)
 
         if lm in ["BERT", "BERT-large", "RoBERTa", "RoBERTa-large"]:
-            self.embedder = self._initialize_embedder(True,
-                                                      start=start,
-                                                      end=end)
+            self.embedder = self._initialize_embedder(True, start=start, end=end)
         else:
             self.embedder = self._initialize_embedder(False)
 
@@ -184,9 +186,10 @@ class DataGenerator:
 
             def embedder(query_str):
                 tokens_tensor = torch.tensor(
-                    self.tokenizer.encode(query_str,
-                                          add_special_tokens=False,
-                                          return_tensors="pt").to(self.device))
+                    self.tokenizer.encode(
+                        query_str, add_special_tokens=False, return_tensors="pt"
+                    ).to(self.device)
+                )
 
                 outputs = self.lm_model(tokens_tensor)
                 print(outputs)
@@ -200,11 +203,11 @@ class DataGenerator:
                 query_str = start + " " + query_str + " " + end
                 tokenized_text = self.tokenizer.tokenize(query_str)
                 tokens_tensor = torch.tensor(
-                    [self.tokenizer.convert_tokens_to_ids(tokenized_text)])
+                    [self.tokenizer.convert_tokens_to_ids(tokenized_text)]
+                )
                 """ tokens_tensor = torch.tensor([indexed_tokens.to(self.device)])
                  """
-                tokens_tensor = tokens_tensor.to(
-                    self.device)  # if you have gpu
+                tokens_tensor = tokens_tensor.to(self.device)  # if you have gpu
 
                 with torch.no_grad():
                     outputs = self.lm_model(tokens_tensor)
@@ -232,11 +235,9 @@ class DataGenerator:
         self.reset_data()
 
         if split == "train":
-            dataloader = DataLoader(self.dataset.get_training_set(),
-                                    batch_size=82)
+            dataloader = DataLoader(self.dataset.get_training_set(), batch_size=82)
         elif split == "val":
-            dataloader = DataLoader(self.dataset.get_validation_set(),
-                                    batch_size=82)
+            dataloader = DataLoader(self.dataset.get_validation_set(), batch_size=82)
         elif split == "test":
             dataloader = DataLoader(self.dataset.get_test_set(), batch_size=82)
         else:
@@ -248,8 +249,7 @@ class DataGenerator:
             batch.y[batch.room_mask],
             batch.y[batch.object_mask],
         )
-        y_object = F.one_hot(label[-1],
-                             len(self.object_list)).type(torch.LongTensor)
+        y_object = F.one_hot(label[-1], len(self.object_list)).type(torch.LongTensor)
         category_index_map = get_category_index_map(batch)
         object_room_edge_index = batch.object_room_edge_index
 
@@ -257,8 +257,9 @@ class DataGenerator:
             ground_truth_room = label[1][i]
 
             mask = category_index_map[object_room_edge_index[1]] == i
-            neighbor_dists = y_object[category_index_map[
-                object_room_edge_index[0][mask]]]
+            neighbor_dists = y_object[
+                category_index_map[object_room_edge_index[0][mask]]
+            ]
             neighbor_dists = neighbor_dists.to(self.device)
             all_objs = torch.sum(neighbor_dists, dim=0) > 0
 
@@ -268,9 +269,9 @@ class DataGenerator:
 
             scores = all_objs * self.object_norm_inv_perplexity
 
-            objs = torch.topk(scores,
-                              max(min((all_objs > 0).sum(), max_num_obj),
-                                  1)).indices
+            objs = torch.topk(
+                scores, max(min((all_objs > 0).sum(), max_num_obj), 1)
+            ).indices
             all_obj_names = [self.object_list[i] for i in all_objs.nonzero()]
 
             self.objects.append(objs)
@@ -304,7 +305,8 @@ class DataGenerator:
         all_objs_list = []
 
         for objs, label, all_objs in tqdm(
-                zip(self.objects, self.labels, self.all_objs)):
+            zip(self.objects, self.labels, self.all_objs)
+        ):
             if skip_rms:
                 if len(objs) < num_objs:
                     continue
@@ -397,12 +399,16 @@ class DataGenerator:
         count = 0
         for k, total in data_generation_params:
             suffix = "train_k" + str(k) + "_total" + str(total)
-            sentences, all_objs_list, labels, query_embeddings, room_embeddings = dg.generate_data(
-                k, total)
+            sentences, all_objs_list, labels, query_embeddings, room_embeddings = (
+                dg.generate_data(k, total)
+            )
             count += len(sentences)
             TEMP[suffix] = [
-                sentences, all_objs_list, labels, query_embeddings,
-                room_embeddings
+                sentences,
+                all_objs_list,
+                labels,
+                query_embeddings,
+                room_embeddings,
             ]
         split_dict["train"] = TEMP
         print(count, "train sentences")
@@ -413,12 +419,16 @@ class DataGenerator:
         count = 0
         for k, total in data_generation_params:
             suffix = "val_k" + str(k) + "_total" + str(total)
-            sentences, all_objs_list, labels, query_embeddings, room_embeddings = dg.generate_data(
-                k, total)
+            sentences, all_objs_list, labels, query_embeddings, room_embeddings = (
+                dg.generate_data(k, total)
+            )
             count += len(sentences)
             TEMP[suffix] = [
-                sentences, all_objs_list, labels, query_embeddings,
-                room_embeddings
+                sentences,
+                all_objs_list,
+                labels,
+                query_embeddings,
+                room_embeddings,
             ]
         split_dict["val"] = TEMP
         print(count, "val sentences")
@@ -429,12 +439,16 @@ class DataGenerator:
             TEMP = {}
             count = 0
             suffix = "test_k" + str(k_test)
-            sentences, all_objs_list, labels, query_embeddings, room_embeddings = dg.generate_data(
-                k_test, k_test, all_permutations=False, skip_rms=False)
+            sentences, all_objs_list, labels, query_embeddings, room_embeddings = (
+                dg.generate_data(k_test, k_test, all_permutations=False, skip_rms=False)
+            )
             count += len(sentences)
             TEMP[suffix] = [
-                sentences, all_objs_list, labels, query_embeddings,
-                room_embeddings
+                sentences,
+                all_objs_list,
+                labels,
+                query_embeddings,
+                room_embeddings,
             ]
             split_dict["test"] = TEMP
             print(count, "test sentences")
@@ -442,70 +456,74 @@ class DataGenerator:
 
 
 if __name__ == "__main__":
-    for lm in ["RoBERTa-large", "BERT-large"]:
-        for label_set in ["nyuClass", "mpcat40"]:
-            for use_gt in [True, False]:
-                data_folder = os.path.join(
-                    "./data/",
-                    lm + "_" + label_set + "_useGT_" + str(use_gt) + "_502030")
-                if not os.path.exists(data_folder):
-                    os.makedirs(data_folder)
-                for split in ["train", "val", "test"]:
-                    if not os.path.exists(os.path.join(data_folder, split)):
-                        os.makedirs(os.path.join(data_folder, split))
+    lm = "RoBERTa-large"
+    use_gt = True
+    label_set = "mpcat40"
 
-                dg = DataGenerator(verbose=True,
-                                   label_set=label_set,
-                                   use_gt_cooccurrencies=use_gt)
-                dg.configure_lm(lm)
+    data_folder = os.path.join(
+        "./data/",
+        lm + "_" + label_set + "_useGT_" + str(use_gt) + "_502030",
+    )
+    if not os.path.exists(data_folder):
+        os.makedirs(data_folder)
+    for split in ["train", "val", "test"]:
+        if not os.path.exists(os.path.join(data_folder, split)):
+            os.makedirs(os.path.join(data_folder, split))
 
-                data_generation_params = [(1, 1), (2, 2), (3, 3), (1, 2),
-                                          (2, 3), (3, 4)]
-                k_test = 3
+    dg = DataGenerator(verbose=True, label_set=label_set, use_gt_cooccurrencies=use_gt)
+    dg.configure_lm(lm)
 
-                split_dict = dg.data_split_generator(data_generation_params,
-                                                     k_test)
-                # Save
-                splits = ["train", "val", "test"
-                          ] if k_test > 0 else ["train", "val"]
-                for split in splits:
-                    for suffix in split_dict[split]:
-                        sentences, all_objs_list, labels, query_embeddings, room_embeddings = split_dict[
-                            split][suffix]
+    data_generation_params = [
+        (1, 1),
+        (2, 2),
+        (3, 3),
+        (1, 2),
+        (2, 3),
+        (3, 4),
+    ]
+    k_test = 3
 
-                        # Save query sentences
-                        with open(
-                                os.path.join(
-                                    data_folder, split,
-                                    "query_sentences_" + suffix + ".pkl"),
-                                "wb",
-                        ) as fp:
-                            pickle.dump(sentences, fp)
+    split_dict = dg.data_split_generator(data_generation_params, k_test)
+    # Save
+    splits = ["train", "val", "test"] if k_test > 0 else ["train", "val"]
+    for split in splits:
+        for suffix in split_dict[split]:
+            (
+                sentences,
+                all_objs_list,
+                labels,
+                query_embeddings,
+                room_embeddings,
+            ) = split_dict[split][suffix]
 
-                        # Save list of strings of all objects
-                        with open(
-                                os.path.join(data_folder, split,
-                                             "all_objs_" + suffix + ".pkl"),
-                                "wb",
-                        ) as fp:
-                            pickle.dump(all_objs_list, fp)
+            # Save query sentences
+            with open(
+                os.path.join(data_folder, split, "query_sentences_" + suffix + ".pkl"),
+                "wb",
+            ) as fp:
+                pickle.dump(sentences, fp)
 
-                        # Save labels
-                        torch.save(
-                            labels,
-                            os.path.join(data_folder, split,
-                                         "labels_" + suffix + ".pt"))
+            # Save list of strings of all objects
+            with open(
+                os.path.join(data_folder, split, "all_objs_" + suffix + ".pkl"),
+                "wb",
+            ) as fp:
+                pickle.dump(all_objs_list, fp)
 
-                        # Save query embeddings
-                        torch.save(
-                            query_embeddings,
-                            os.path.join(data_folder, split,
-                                         "query_embeddings_" + suffix + ".pt"),
-                        )
+            # Save labels
+            torch.save(
+                labels,
+                os.path.join(data_folder, split, "labels_" + suffix + ".pt"),
+            )
 
-                        # Save room embeddings
-                        torch.save(
-                            room_embeddings,
-                            os.path.join(data_folder, split,
-                                         "room_embeddings_" + suffix + ".pt"),
-                        )
+            # Save query embeddings
+            torch.save(
+                query_embeddings,
+                os.path.join(data_folder, split, "query_embeddings_" + suffix + ".pt"),
+            )
+
+            # Save room embeddings
+            torch.save(
+                room_embeddings,
+                os.path.join(data_folder, split, "room_embeddings_" + suffix + ".pt"),
+            )

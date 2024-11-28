@@ -1,11 +1,11 @@
-from scene_graph import NodeType
+# from scene_graph import NodeType
 import pickle
 
 
 class Matterport3dDataset:
 
     def __init__(self, dataset_file_path):
-        with open(dataset_file_path, 'rb') as input_file:
+        with open(dataset_file_path, "rb") as input_file:
             input_data = pickle.load(input_file)
         dataset_list = input_data[0]
         labels_dict = input_data[1]
@@ -17,13 +17,11 @@ class Matterport3dDataset:
             len(labels_dict[NodeType.object])
         ] """
 
-        self.num_classes = [
-            len(labels_dict[key]) for key in labels_dict.keys()
-        ]
+        self.num_classes = [len(labels_dict[key]) for key in labels_dict.keys()]
 
         self.labels_dict = labels_dict
         self.train_val_test_split = train_val_test_split
-        self.name = 'Matterport3d_full_graph'
+        self.name = "Matterport3d_full_graph"
         self.__dataset = dataset_list
 
         if len(input_data) > 3:

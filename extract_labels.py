@@ -1,4 +1,4 @@
-from dataset_loader.load_matterport3d_dataset import Matterport3dDataset
+from load_matterport3d_dataset import Matterport3dDataset
 from torch_geometric.loader import DataLoader
 import inflect
 
@@ -8,8 +8,9 @@ def create_label_lists(dataset, verbose=False):
 
     labels, pl_labels = [], []
 
-    for node_type_str, node_type in zip(["building", "room", "object"],
-                                        dataset.labels_dict.keys()):
+    for node_type_str, node_type in zip(
+        ["building", "room", "object"], dataset.labels_dict.keys()
+    ):
         if verbose:
             print("---------------------------------------------------------")
             print(node_type_str)
@@ -21,7 +22,12 @@ def create_label_lists(dataset, verbose=False):
 
         pl_label_list = []
         for label in label_list:
-            if "equipment" in label or "shelves" in label or "stairs" in label or "clothes" in label:
+            if (
+                "equipment" in label
+                or "shelves" in label
+                or "stairs" in label
+                or "clothes" in label
+            ):
                 pl_label_list.append(label)
             else:
                 pl_label_list.append(engine.plural(label))

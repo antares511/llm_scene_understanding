@@ -40,12 +40,9 @@ def train_job(lm, label_set, epochs, batch_size, co_suffix="", seed=0):
     label_embeddings = torch.load("./label_embeddings/" + lm + ".pt")
 
     # Current best: 0.7018 - LR=0.00001, WD=0.0001, SS=20, G=0.99
-    params = params = list(query_net.parameters()) + list(
-        label_net.parameters())
+    params = params = list(query_net.parameters()) + list(label_net.parameters())
     optimizer = torch.optim.Adam(params, lr=0.00001, weight_decay=0.001)
-    scheduler = torch.optim.lr_scheduler.StepLR(optimizer,
-                                                step_size=20,
-                                                gamma=0.9)
+    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=20, gamma=0.9)
 
     loss_fxn = contrastive_loss
 
@@ -90,34 +87,40 @@ def train_job(lm, label_set, epochs, batch_size, co_suffix="", seed=0):
                     loss = loss_fxn(pred, label)
                     val_epoch_loss.append(loss.item() * len(label))
 
-                    accuracy = ((torch.argmax(pred, dim=1) == label) *
-                                1.0).mean()
+                    accuracy = ((torch.argmax(pred, dim=1) == label) * 1.0).mean()
                     val_epoch_acc.append(accuracy * len(label))
                     if batch_idx % 100 == 0:
-                        desc = (f"{loss.item():6.4}" + ", " +
-                                f"{accuracy.item():6.4}")
+                        desc = f"{loss.item():6.4}" + ", " + f"{accuracy.item():6.4}"
                         pbar.set_description((desc).rjust(20))
-            val_losses.append(
-                torch.sum(torch.tensor(val_epoch_loss)) / len(val_ds))
-            val_acc.append(
-                torch.sum(torch.tensor(val_epoch_acc)) / len(val_ds))
+            val_losses.append(torch.sum(torch.tensor(val_epoch_loss)) / len(val_ds))
+            val_acc.append(torch.sum(torch.tensor(val_epoch_acc)) / len(val_ds))
             if epoch == 0:
                 best_val_acc = val_acc[-1]
-                torch.save(query_net.state_dict(),
-                           "./checkpoints/best_con_query_" + suffix + ".pt")
-                torch.save(label_net.state_dict(),
-                           "./checkpoints/best_con_label_" + suffix + ".pt")
+                torch.save(
+                    query_net.state_dict(),
+                    "./checkpoints/best_con_query_" + suffix + ".pt",
+                )
+                torch.save(
+                    label_net.state_dict(),
+                    "./checkpoints/best_con_label_" + suffix + ".pt",
+                )
             elif val_acc[-1] > best_val_acc:
                 best_val_acc = val_acc[-1]
-                torch.save(query_net.state_dict(),
-                           "./checkpoints/best_con_query_" + suffix + ".pt")
-                torch.save(label_net.state_dict(),
-                           "./checkpoints/best_con_label_" + suffix + ".pt")
+                torch.save(
+                    query_net.state_dict(),
+                    "./checkpoints/best_con_query_" + suffix + ".pt",
+                )
+                torch.save(
+                    label_net.state_dict(),
+                    "./checkpoints/best_con_label_" + suffix + ".pt",
+                )
 
     query_net.load_state_dict(
-        torch.load("./checkpoints/best_con_query_" + suffix + ".pt"))
+        torch.load("./checkpoints/best_con_query_" + suffix + ".pt")
+    )
     label_net.load_state_dict(
-        torch.load("./checkpoints/best_con_label_" + suffix + ".pt"))
+        torch.load("./checkpoints/best_con_label_" + suffix + ".pt")
+    )
     query_net.eval()
     label_net.eval()
     test_loss, test_acc = [], []
@@ -177,14 +180,9 @@ if __name__ == "__main__":
                 test_loss_list.append(test_loss)
                 test_acc_list.append(test_acc)
 
-    pickle.dump(train_losses_list,
-                open("./contrastive_results/train_losses.pkl", "wb"))
-    pickle.dump(train_acc_list,
-                open("./contrastive_results/train_acc.pkl", "wb"))
-    pickle.dump(val_losses_list,
-                open("./contrastive_results/val_losses.pkl", "wb"))
+    pickle.dump(train_losses_list, open("./contrastive_results/train_losses.pkl", "wb"))
+    pickle.dump(train_acc_list, open("./contrastive_results/train_acc.pkl", "wb"))
+    pickle.dump(val_losses_list, open("./contrastive_results/val_losses.pkl", "wb"))
     pickle.dump(val_acc_list, open("./contrastive_results/val_acc.pkl", "wb"))
-    pickle.dump(test_loss_list,
-                open("./contrastive_results/test_loss.pkl", "wb"))
-    pickle.dump(test_acc_list, open("./contrastive_results/test_acc.pkl",
-                                    "wb"))
+    pickle.dump(test_loss_list, open("./contrastive_results/test_loss.pkl", "wb"))
+    pickle.dump(test_acc_list, open("./contrastive_results/test_acc.pkl", "wb"))
